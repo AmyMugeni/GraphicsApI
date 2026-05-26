@@ -1,82 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snake Xenzia</title>
-    <style>
-        :root {
-            --bg: #0b0b0d;
-            --panel: #16161a;
-            --accent: #10b981;
-            --text: #f4f4f5;
-        }
-        body {
-            margin: 0; padding: 0;
-            background-color: var(--bg);
-            color: var(--text);
-            font-family: system-ui, -apple-system, sans-serif;
-            display: flex; height: 100vh; overflow: hidden;
-        }
-        #sidebar {
-            width: 300px; background-color: var(--panel);
-            padding: 25px; box-shadow: 4px 0 15px rgba(0,0,0,0.5);
-            display: flex; flex-direction: column; gap: 20px; z-index: 10;
-        }
-        #canvas-container {
-            flex-grow: 1; display: flex; justify-content: center; align-items: center;
-            background: radial-gradient(circle at center, #1e1e24 0%, #0b0b0d 100%);
-        }
-        canvas {
-            background-color: #050507; border-radius: 12px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
-        }
-        h1, h2 { margin: 0; font-weight: 700; }
-        h1 { color: var(--accent); font-size: 1.8rem; }
-        .stat { font-size: 1.1rem; color: #a1a1aa; }
-        .stat span { color: #fff; font-weight: bold; }
-        .pipeline-box {
-            font-size: 0.8rem; background: rgba(0,0,0,0.4);
-            padding: 12px; border-radius: 6px; border-left: 3px solid var(--accent);
-            line-height: 1.4; color: #cbd5e1;
-        }
-        .controls-hint {
-            font-size: 0.85rem; color: #71717a; background: #202024;
-            padding: 10px; border-radius: 6px; text-align: center;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake Xenzia</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0e0e14;
+      color: #c4c2d4;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    #hud {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(140,138,165,0.12);
+    }
+
+    .brand {
+      font-size: 16px;
+      font-weight: 500;
+      color: #e2e0f0;
+      letter-spacing: 0.2px;
+    }
+    .brand span { color: #7F77DD; }
+
+    #meta { display: flex; align-items: center; gap: 12px; }
+
+    .pill {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(140,138,165,0.08);
+      border: 1px solid rgba(140,138,165,0.15);
+      color: #a09eb8;
+    }
+
+    #score-pill {
+      background: rgba(127,119,221,0.12);
+      border-color: rgba(127,119,221,0.25);
+      color: #AFA9EC;
+    }
+
+    #sdot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #7F77DD;
+      display: inline-block;
+      margin-right: 5px;
+      transition: background 0.3s;
+    }
+    #sdot.dead { background: #888780; }
+
+    #canvas-wrap { position: relative; flex: 1; }
+
+    canvas { display: block; width: 100%; height: 100%; }
+
+    #overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(10,10,18,0.65);
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #overlay.show { display: flex; }
+    #overlay h2 { color: rgba(255,255,255,0.82); font-size: 20px; font-weight: 500; }
+    #overlay p  { color: rgba(255,255,255,0.38); font-size: 13px; }
+
+    #restart-btn {
+      margin-top: 4px;
+      font-size: 13px;
+      padding: 8px 22px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: rgba(255,255,255,0.75);
+      cursor: pointer;
+    }
+    #restart-btn:hover { background: rgba(255,255,255,0.12); }
+
+    #footer {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      border-top: 1px solid rgba(140,138,165,0.12);
+    }
+
+    .key-hint {
+      font-size: 12px;
+      color: #6e6c82;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .kbd {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(140,138,165,0.08);
+      border: 1px solid rgba(140,138,165,0.15);
+      color: #a09eb8;
+      font-family: monospace;
+    }
+
+    .sep {
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: rgba(140,138,165,0.2);
+    }
+  </style>
 </head>
 <body>
 
-    <div id="sidebar">
-        <h1>Snake Xenzia</h1>
-        <p style="margin:0; color:#71717a; font-size:0.85rem;">Custom 3D Software Renderer</p>
-        
-        <hr style="border-color: #27272a; margin: 5px 0;">
-
-        <div class="stat">Score: <span id="score">0</span></div>
-        <div class="stat">Game Status: <span id="status" style="color: #3b82f6;">PLAYING</span></div>
-
-        <div class="controls-hint">
-            <strong>Controls:</strong><br>
-            Use <b>Arrow Keys</b> to steer the snake.<br>
-            (Grid relative steering)
-        </div>
-
-        <div class="pipeline-box">
-            <strong>Pipeline Monitor:</strong>
-            <ul style="margin: 6px 0 0 15px; padding: 0;">
-                <li><b>Application:</b> Snake mechanics, grid logic, directional input.</li>
-                <li><b>Geometry:</b> World matrix translations, Backface Culling, 3D to 2D Perspective Projection.</li>
-                <li><b>Rasterization:</b> Depth-sorted face filling & wireframe drawing.</li>
-            </ul>
-        </div>
+  <div id="hud">
+    <div class="brand">Snake <span>Xenzia</span></div>
+    <div id="meta">
+      <div class="pill" id="score-pill">Score: <span id="score-val">0</span></div>
+      <div class="pill"><span id="sdot"></span><span id="status-val">playing</span></div>
     </div>
+  </div>
 
-    <div id="canvas-container">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="canvas-wrap">
+    <canvas id="gc"></canvas>
+    <div id="overlay">
+      <h2>Game over</h2>
+      <p id="final-score">Score: 0</p>
+      <button id="restart-btn">Play again</button>
     </div>
+  </div>
 
-    <script src="script.js"></script>
+  <div id="footer">
+    <div class="key-hint"><span class="kbd">↑ ↓ ← →</span> controls</div>
+    <div class="sep"></div>
+    <div class="key-hint">3D Graphics game</div>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>

@@ -1,281 +1,244 @@
-/**
- * 3D PIPELINE SAKE GAME ENGINE
- * Strictly utilizes HTML5 Canvas 2D Context for raw rasterization of calculated 3D coordinates.
- */
+const canvas = document.getElementById("gc");
+const ctx    = canvas.getContext("2d");
+const wrap   = document.getElementById("canvas-wrap");
 
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+// ─── Grid & cube geometry ───────────────────────────────────────────────────
 
-// Game Settings & Grid Scale
-const GRID_SIZE = 14; 
-let score = 0;
-let gameOver = false;
+const GRID = 14;
+const SZ   = 0.44;
 
-// Snake Application State
-let snake = [
-    {x: 0, y: 0}, // Head
-    {x: -1, y: 0},
-    {x: -2, y: 0}  // Tail
-];
-let direction = {x: 1, y: 0}; // Initial movement vector
-let nextDirection = {x: 1, y: 0};
-let food = {x: 3, y: 3};
-
-// Timing for game ticks (independent of rendering framerate)
-let lastTickTime = 0;
-const tickInterval = 300; // Move snake every 300ms
-
-// Camera & Render Settings
-const cameraZ = 12.0; 
-const fov = 55;
-// Static rotation angles to tilt the game board for a cool isometric/3D view
-const pitch = 0.8;  // Tilt down (X-axis rotation)
-const yaw = 0.5;    // Turn slightly (Y-axis rotation)
-
-// Base 3D geometry layout for a unit Cube (Centered at 0,0,0)
-const unitCubeVertices = [
-    {x: -0.4, y: -0.4, z: -0.4}, {x: 0.4, y: -0.4, z: -0.4},
-    {x: 0.4, y:  0.4, z: -0.4}, {x: -0.4, y:  0.4, z: -0.4},
-    {x: -0.4, y: -0.4, z:  0.4}, {x: 0.4, y: -0.4, z:  0.4},
-    {x: 0.4, y:  0.4, z:  0.4}, {x: -0.4, y:  0.4, z:  0.4}
+const CUBE_V = [
+    [-SZ,-SZ,-SZ],[ SZ,-SZ,-SZ],[ SZ, SZ,-SZ],[-SZ, SZ,-SZ],
+    [-SZ,-SZ, SZ],[ SZ,-SZ, SZ],[ SZ, SZ, SZ],[-SZ, SZ, SZ]
 ];
 
-const cubeFaces = [
-    { indices: [0, 1, 2, 3], baseColor: [16, 185, 129] },  // Front
-    { indices: [1, 5, 6, 2], baseColor: [5,  150, 105] },  // Right
-    { indices: [5, 4, 7, 6], baseColor: [16, 185, 129] },  // Back
-    { indices: [4, 0, 3, 7], baseColor: [5,  150, 105] },  // Left
-    { indices: [4, 5, 1, 0], baseColor: [52, 211, 153] },  // Top
-    { indices: [3, 2, 6, 7], baseColor: [4,  120, 87] }   // Bottom
+const FACES = [
+    [0,1,2,3],
+    [1,5,6,2],
+    [5,4,7,6],
+    [4,0,3,7],
+    [4,5,1,0],
+    [3,2,6,7]
 ];
 
-// Input Management
-window.addEventListener('keydown', e => {
-    switch(e.key) {
-        case 'ArrowUp':    if (direction.y === 0) nextDirection = {x: 0, y: -1}; break;
-        case 'ArrowDown':  if (direction.y === 0) nextDirection = {x: 0, y: 1};  break;
-        case 'ArrowLeft':  if (direction.x === 0) nextDirection = {x: -1, y: 0}; break;
-        case 'ArrowRight': if (direction.x === 0) nextDirection = {x: 1, y: 0};  break;
+// Per-face brightness multipliers to simulate ambient lighting
+const SHADES = [1, 0.78, 0.60, 0.70, 0.88, 0.52];
+
+// ─── Camera ─────────────────────────────────────────────────────────────────
+
+const PITCH  = 0.52;   // ~30° tilt
+const YAW    = 0.42;   // slight rotation
+const CAM_Z  = 22;
+
+const cosPitch = Math.cos(PITCH), sinPitch = Math.sin(PITCH);
+const cosYaw   = Math.cos(YAW),   sinYaw   = Math.sin(YAW);
+
+// ─── Calm colour palette ─────────────────────────────────────────────────────
+
+const BG        = "#0e0e14";
+const GRID_LINE = "rgba(140,138,165,0.09)";
+const HEAD_RGB  = [110, 106, 178];   // muted purple
+const BODY_RGB  = [82,  79,  148];   // deeper purple
+const FOOD_RGB  = [178, 118, 105];   // soft terracotta
+
+// ─── Game state ──────────────────────────────────────────────────────────────
+
+const SPEED = 210;   // ms per step
+
+let snake, dir, nextDir, food, score, gameOver, lastMove;
+
+// ─── Auto-fit projection ─────────────────────────────────────────────────────
+// Measures the projected bounding box of the grid and scales to fill the canvas.
+
+let autoScale = 1, offX = 0, offY = 0;
+
+function rotate(x, y, z) {
+    const y1 = y * cosPitch - z * sinPitch;
+    const z1 = y * sinPitch + z * cosPitch;
+    const x2 = x * cosYaw   + z1 * sinYaw;
+    const z2 = -x * sinYaw  + z1 * cosYaw;
+    return [x2, y1, z2];
+}
+
+function computeFit() {
+    const corners = [
+        [-GRID/2, -GRID/2, -0.5],
+        [ GRID/2, -GRID/2, -0.5],
+        [ GRID/2,  GRID/2, -0.5],
+        [-GRID/2,  GRID/2, -0.5]
+    ];
+    const pts = corners.map(([x, y, z]) => {
+        const [rx, ry, rz] = rotate(x, y, z);
+        const s = CAM_Z / (CAM_Z - rz);
+        return [rx * s, ry * s];
+    });
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    autoScale = Math.min(
+        canvas.width  / (maxX - minX),
+        canvas.height / (maxY - minY)
+    ) * 0.88;
+    offX = canvas.width  / 2 - ((minX + maxX) / 2) * autoScale;
+    offY = canvas.height / 2 - ((minY + maxY) / 2) * autoScale;
+}
+
+function project(x, y, z) {
+    const [rx, ry, rz] = rotate(x, y, z);
+    const s = (CAM_Z / (CAM_Z - rz)) * autoScale;
+    return { x: rx * s + offX, y: ry * s + offY, z: rz };
+}
+
+// ─── Canvas resize ───────────────────────────────────────────────────────────
+
+function resize() {
+    canvas.width  = wrap.clientWidth;
+    canvas.height = wrap.clientHeight || Math.round(canvas.width * 0.68);
+    computeFit();
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+// ─── Game helpers ────────────────────────────────────────────────────────────
+
+function rndFood() {
+    while (true) {
+        const x = Math.floor(Math.random() * GRID) - GRID / 2;
+        const y = Math.floor(Math.random() * GRID) - GRID / 2;
+        if (!snake.some(s => s.x === x && s.y === y)) return { x, y };
     }
+}
+
+function init() {
+    snake   = [{ x:0,y:0 }, { x:-1,y:0 }, { x:-2,y:0 }];
+    dir     = { x:1, y:0 };
+    nextDir = { x:1, y:0 };
+    food    = rndFood();
+    score   = 0;
+    gameOver  = false;
+    lastMove  = 0;
+
+    document.getElementById("score-val").textContent  = "0";
+    document.getElementById("status-val").textContent = "playing";
+    document.getElementById("sdot").className         = "";
+    document.getElementById("overlay").classList.remove("show");
+}
+
+// ─── Input ───────────────────────────────────────────────────────────────────
+
+window.addEventListener("keydown", e => {
+    if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))
+        e.preventDefault();
+
+    if (e.key === "ArrowUp"    && dir.y === 0) nextDir = { x: 0, y:-1 };
+    if (e.key === "ArrowDown"  && dir.y === 0) nextDir = { x: 0, y: 1 };
+    if (e.key === "ArrowLeft"  && dir.x === 0) nextDir = { x:-1, y: 0 };
+    if (e.key === "ArrowRight" && dir.x === 0) nextDir = { x: 1, y: 0 };
 });
 
-function generateFood() {
-    while(true) {
-        let rx = Math.floor(Math.random() * GRID_SIZE) - GRID_SIZE/2;
-        let ry = Math.floor(Math.random() * GRID_SIZE) - GRID_SIZE/2;
-        // Ensure food doesn't spawn on top of the snake
-        if (!snake.some(seg => seg.x === rx && seg.y === ry)) {
-            food = {x: rx, y: ry};
-            break;
-        }
+document.getElementById("restart-btn").addEventListener("click", init);
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
+
+function drawGrid() {
+    ctx.strokeStyle = GRID_LINE;
+    ctx.lineWidth   = 1;
+
+    for (let i = -GRID / 2; i <= GRID / 2; i++) {
+        const a = project(i,      -GRID/2, -0.52);
+        const b = project(i,       GRID/2, -0.52);
+        const c = project(-GRID/2, i,      -0.52);
+        const d = project( GRID/2, i,      -0.52);
+
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.stroke();
     }
 }
 
-/**
- * Helper Math: Rotate 3D vector points around origin via Tilt Matrices
- */
-function rotatePoint(p, radX, radY) {
-    // Pitch (Rotation around X axis)
-    let y1 = p.y * Math.cos(radX) - p.z * Math.sin(radX);
-    let z1 = p.y * Math.sin(radX) + p.z * Math.cos(radX);
-    
-    // Yaw (Rotation around Y axis)
-    let x2 = p.x * Math.cos(radY) + z1 * Math.sin(radY);
-    let z2 = -p.x * Math.sin(radY) + z1 * Math.cos(radY);
-    
-    return {x: x2, y: y1, z: z2};
+function drawCube(gx, gy, [r, g, b]) {
+    const verts = CUBE_V.map(([vx, vy, vz]) => project(vx + gx, vy + gy, vz));
+
+    // Depth-sort faces (painter's algorithm)
+    const queue = FACES
+        .map((f, i) => ({
+            f, i,
+            depth: (verts[f[0]].z + verts[f[1]].z + verts[f[2]].z + verts[f[3]].z) / 4
+        }))
+        .sort((a, b) => a.depth - b.depth);
+
+    for (const { f, i } of queue) {
+        const s = SHADES[i];
+        ctx.beginPath();
+        ctx.moveTo(verts[f[0]].x, verts[f[0]].y);
+        for (let k = 1; k < f.length; k++)
+            ctx.lineTo(verts[f[k]].x, verts[f[k]].y);
+        ctx.closePath();
+
+        ctx.fillStyle   = `rgba(${Math.round(r*s)},${Math.round(g*s)},${Math.round(b*s)},0.92)`;
+        ctx.strokeStyle = "rgba(0,0,0,0.22)";
+        ctx.lineWidth   = 0.5;
+        ctx.fill();
+        ctx.stroke();
+    }
 }
 
-/**
- * CORE GRAPHICS ENGINE & GAME LOOP
- */
-function updateAndRender(timestamp) {
-    // Clear screen backbuffer
-    ctx.fillStyle = '#050507';
+function render() {
+    ctx.fillStyle = BG;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // ==========================================
-    // STAGE 1: APPLICATION STAGE
-    // ==========================================
-    // Handles core mechanics processing logic, game updates, scoring, and input parsing.
-    if (!gameOver && timestamp - lastTickTime > tickInterval) {
-        lastTickTime = timestamp;
-        direction = nextDirection;
+    drawGrid();
 
-        // Calculate targeted next position for Snake Head
-        let newHead = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
+    snake.forEach((s, i) =>
+        drawCube(s.x, s.y, i === 0 ? HEAD_RGB : BODY_RGB)
+    );
 
-        // Collision Checks (Walls boundaries)
-        const boundary = GRID_SIZE / 2;
-        if (newHead.x >= boundary || newHead.x < -boundary || newHead.y >= boundary || newHead.y < -boundary) {
-            gameOver = true;
-            document.getElementById('status').innerText = "GAME OVER";
-            document.getElementById('status').style.color = "#ef4444";
-        }
-
-        // Collision Checks (Self intersection)
-        if (snake.some(seg => seg.x === newHead.x && seg.y === newHead.y)) {
-            gameOver = true;
-            document.getElementById('status').innerText = "GAME OVER";
-            document.getElementById('status').style.color = "#ef4444";
-        }
-
-        if (!gameOver) {
-            snake.unshift(newHead); // Append new head node to stack array
-
-            // Check Food collection mechanics
-            if (newHead.x === food.x && newHead.y === food.y) {
-                score += 10;
-                document.getElementById('score').innerText = score;
-                generateFood();
-            } else {
-                snake.pop(); // Trim tail fragment if no growth occured
-            }
-        }
-    }
-
-    // Pipeline Draw Queue across objects
-    let renderQueue = [];
-
-    // ==========================================
-    // STAGE 2: GEOMETRY PROCESSING STAGE
-    // ==========================================
-    // Local transformations, Camera Views alignments, Backface Culling filters, and Screen Space projection equations.
-
-    // --- OBJECT 1: The Game Board Platform Grid Base ---
-    const halfG = GRID_SIZE / 2;
-    for (let i = -halfG; i <= halfG; i++) {
-        // Line templates along horizontal & vertical axes lines
-        let linesData = [
-            [{x: i, y: -halfG, z: -0.4}, {x: i, y: halfG, z: -0.4}],
-            [{x: -halfG, y: i, z: -0.4}, {x: halfG, y: i, z: -0.4}]
-        ];
-
-        linesData.forEach(line => {
-            let p1Rot = rotatePoint({x: line[0].x, y: line[0].y, z: line[0].z}, pitch, yaw);
-            let p2Rot = rotatePoint({x: line[1].x, y: line[1].y, z: line[1].z}, pitch, yaw);
-
-            // Project 3D onto 2D viewport coordinates scaling
-            let fovRad = 1.0 / Math.tan((fov * Math.PI / 180) / 2);
-            
-            let s1 = fovRad / (cameraZ - p1Rot.z);
-            let screenX1 = (p1Rot.x * s1) * (canvas.height / 2) + (canvas.width / 2);
-            let screenY1 = (p1Rot.y * s1) * (canvas.height / 2) + (canvas.height / 2);
-
-            let s2 = fovRad / (cameraZ - p2Rot.z);
-            let screenX2 = (p2Rot.x * s2) * (canvas.height / 2) + (canvas.width / 2);
-            let screenY2 = (p2Rot.y * s2) * (canvas.height / 2) + (canvas.height / 2);
-
-            renderQueue.push({
-                type: 'line',
-                x1: screenX1, y1: screenY1, x2: screenX2, y2: screenY2,
-                depth: (p1Rot.z + p2Rot.z) / 2,
-                color: 'rgba(255, 255, 255, 0.08)'
-            });
-        });
-    }
-
-    // Function loop container converting geometric instances into dynamic polygons
-    function processCubeInstance(gridX, gridY, customColorOverride) {
-        // Center offsets map
-        let worldX = gridX + 0.5;
-        let worldY = gridY + 0.5;
-        let worldZ = 0; 
-
-        // Compute localized cube vertices matrices arrays
-        let transformedVerts = unitCubeVertices.map(v => {
-            let wX = v.x + worldX;
-            let wY = v.y + worldY;
-            let wZ = v.z + worldZ;
-            return rotatePoint({x: wX, y: wY, z: wZ}, pitch, yaw);
-        });
-
-        cubeFaces.forEach(face => {
-            let v0 = transformedVerts[face.indices[0]];
-            let v1 = transformedVerts[face.indices[1]];
-            let v2 = transformedVerts[face.indices[2]];
-
-            // Geometric Backface Culling Math verification block
-            let ax = v1.x - v0.x, ay = v1.y - v0.y, az = v1.z - v0.z;
-            let bx = v2.x - v0.x, by = v2.y - v0.y, bz = v2.z - v0.z;
-            let nx = ay * bz - az * by;
-            let ny = az * bx - ax * bz;
-            let nz = ax * by - ay * bx;
-
-            // Dot product against camera view vector tracking vector direction
-            let dot = nx * v0.x + ny * v0.y + nz * (v0.z - cameraZ);
-            if (dot >= 0) return; // Discard back-facing surface geometry
-
-            // Perspective projection loop processing
-            let projectedPoints = face.indices.map(idx => {
-                let p = transformedVerts[idx];
-                let scale = (1.0 / Math.tan((fov * Math.PI / 180) / 2)) / (cameraZ - p.z);
-                return {
-                    x: (p.x * scale) * (canvas.height / 2) + (canvas.width / 2),
-                    y: (p.y * scale) * (canvas.height / 2) + (canvas.height / 2)
-                };
-            });
-
-            // Calculate overall depth tracking sorting indices values
-            let avgZ = (v0.z + v1.z + v2.z) / 3;
-
-            let c = customColorOverride || face.baseColor;
-
-            renderQueue.push({
-                type: 'face',
-                points: projectedPoints,
-                depth: avgZ,
-                color: `rgba(${c[0]}, ${c[1]}, ${c[2]}, 0.95)`
-            });
-        });
-    }
-
-    // --- OBJECT 2: The Snake Segments Render Loop ---
-    snake.forEach((segment, index) => {
-        // Render head with a brighter color variant tint
-        let color = index === 0 ? [16, 185, 129] : [52, 211, 153];
-        processCubeInstance(segment.x, segment.y, color);
-    });
-
-    // --- OBJECT 3: Food Collectible Render Asset ---
-    processCubeInstance(food.x, food.y, [239, 68, 68]); // Bright red shade targeting Food item
-
-    // Depth buffer sorting array pass (Painter's Algorithm implementation)
-    renderQueue.sort((a, b) => a.depth - b.depth);
-
-    // ==========================================
-    // STAGE 3: RASTERIZATION STAGE
-    // ==========================================
-    // Evaluates visual nodes structures, updates canvas context draw maps, sets styles fills.
-    renderQueue.forEach(item => {
-        if (item.type === 'line') {
-            ctx.beginPath();
-            ctx.moveTo(item.x1, item.y1);
-            ctx.lineTo(item.x2, item.y2);
-            ctx.strokeStyle = item.color;
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        } else if (item.type === 'face') {
-            ctx.beginPath();
-            ctx.moveTo(item.points[0].x, item.points[0].y);
-            for (let i = 1; i < item.points.length; i++) {
-                ctx.lineTo(item.points[i].x, item.points[i].y);
-            }
-            ctx.closePath();
-
-            // Paint interpolation layout fills
-            ctx.fillStyle = item.color;
-            ctx.fill();
-
-            // Wireframe mesh borders configuration
-            ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        }
-    });
-
-    requestAnimationFrame(updateAndRender);
+    drawCube(food.x, food.y, FOOD_RGB);
 }
 
-// Fire up 3D Scene Initialization
-requestAnimationFrame(updateAndRender);
+// ─── Game logic ──────────────────────────────────────────────────────────────
+
+function update() {
+    dir = nextDir;
+
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+    const lim  = GRID / 2;
+
+    // Wall or self collision → game over
+    if (
+        head.x >= lim || head.x < -lim ||
+        head.y >= lim || head.y < -lim ||
+        snake.some(s => s.x === head.x && s.y === head.y)
+    ) {
+        gameOver = true;
+        document.getElementById("status-val").textContent = "game over";
+        document.getElementById("sdot").className         = "dead";
+        document.getElementById("final-score").textContent = "Score: " + score;
+        document.getElementById("overlay").classList.add("show");
+        return;
+    }
+
+    snake.unshift(head);
+
+    if (head.x === food.x && head.y === food.y) {
+        score += 10;
+        document.getElementById("score-val").textContent = score;
+        food = rndFood();
+    } else {
+        snake.pop();
+    }
+}
+
+// ─── Main loop ───────────────────────────────────────────────────────────────
+
+function loop(t) {
+    if (!gameOver && t - lastMove > SPEED) {
+        update();
+        lastMove = t;
+    }
+    render();
+    requestAnimationFrame(loop);
+}
+
+init();
+requestAnimationFrame(loop);
