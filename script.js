@@ -2,8 +2,6 @@ const canvas = document.getElementById("gc");
 const ctx    = canvas.getContext("2d");
 const wrap   = document.getElementById("canvas-wrap");
 
-// ─── Grid & cube geometry ───────────────────────────────────────────────────
-
 const GRID = 14;
 const SZ   = 0.44;
 
@@ -21,34 +19,24 @@ const FACES = [
     [3,2,6,7]
 ];
 
-// Per-face brightness multipliers to simulate ambient lighting
 const SHADES = [1, 0.78, 0.60, 0.70, 0.88, 0.52];
 
-// ─── Camera ─────────────────────────────────────────────────────────────────
-
-const PITCH  = 0.52;   // ~30° tilt
-const YAW    = 0.42;   // slight rotation
+const PITCH  = 0.52;   
+const YAW    = 0.42;  
 const CAM_Z  = 22;
 
 const cosPitch = Math.cos(PITCH), sinPitch = Math.sin(PITCH);
 const cosYaw   = Math.cos(YAW),   sinYaw   = Math.sin(YAW);
 
-// ─── Calm colour palette ─────────────────────────────────────────────────────
-
 const BG        = "#0e0e14";
 const GRID_LINE = "rgba(140,138,165,0.09)";
-const HEAD_RGB  = [110, 106, 178];   // muted purple
-const BODY_RGB  = [82,  79,  148];   // deeper purple
-const FOOD_RGB  = [178, 118, 105];   // soft terracotta
+const HEAD_RGB  = [110, 106, 178];   
+const BODY_RGB  = [82,  79,  148];   
+const FOOD_RGB  = [178, 118, 105];  
 
-// ─── Game state ──────────────────────────────────────────────────────────────
-
-const SPEED = 210;   // ms per step
+const SPEED = 150;   // ms per step
 
 let snake, dir, nextDir, food, score, gameOver, lastMove;
-
-// ─── Auto-fit projection ─────────────────────────────────────────────────────
-// Measures the projected bounding box of the grid and scales to fill the canvas.
 
 let autoScale = 1, offX = 0, offY = 0;
 
@@ -89,8 +77,6 @@ function project(x, y, z) {
     return { x: rx * s + offX, y: ry * s + offY, z: rz };
 }
 
-// ─── Canvas resize ───────────────────────────────────────────────────────────
-
 function resize() {
     canvas.width  = wrap.clientWidth;
     canvas.height = wrap.clientHeight || Math.round(canvas.width * 0.68);
@@ -99,8 +85,6 @@ function resize() {
 
 window.addEventListener("resize", resize);
 resize();
-
-// ─── Game helpers ────────────────────────────────────────────────────────────
 
 function rndFood() {
     while (true) {
@@ -124,9 +108,6 @@ function init() {
     document.getElementById("sdot").className         = "";
     document.getElementById("overlay").classList.remove("show");
 }
-
-// ─── Input ───────────────────────────────────────────────────────────────────
-
 window.addEventListener("keydown", e => {
     if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key))
         e.preventDefault();
@@ -138,8 +119,6 @@ window.addEventListener("keydown", e => {
 });
 
 document.getElementById("restart-btn").addEventListener("click", init);
-
-// ─── Rendering ───────────────────────────────────────────────────────────────
 
 function drawGrid() {
     ctx.strokeStyle = GRID_LINE;
@@ -158,8 +137,6 @@ function drawGrid() {
 
 function drawCube(gx, gy, [r, g, b]) {
     const verts = CUBE_V.map(([vx, vy, vz]) => project(vx + gx, vy + gy, vz));
-
-    // Depth-sort faces (painter's algorithm)
     const queue = FACES
         .map((f, i) => ({
             f, i,
@@ -195,16 +172,11 @@ function render() {
 
     drawCube(food.x, food.y, FOOD_RGB);
 }
-
-// ─── Game logic ──────────────────────────────────────────────────────────────
-
 function update() {
     dir = nextDir;
 
     const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
     const lim  = GRID / 2;
-
-    // Wall or self collision → game over
     if (
         head.x >= lim || head.x < -lim ||
         head.y >= lim || head.y < -lim ||
@@ -228,8 +200,6 @@ function update() {
         snake.pop();
     }
 }
-
-// ─── Main loop ───────────────────────────────────────────────────────────────
 
 function loop(t) {
     if (!gameOver && t - lastMove > SPEED) {
