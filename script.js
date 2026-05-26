@@ -34,7 +34,7 @@ const HEAD_RGB  = [110, 106, 178];
 const BODY_RGB  = [82,  79,  148];   
 const FOOD_RGB  = [178, 118, 105];  
 
-const SPEED = 150;   // ms per step
+const SPEED = 300;   // ms per step
 
 let snake, dir, nextDir, food, score, gameOver, lastMove;
 
