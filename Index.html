@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Xenzia</title>
+    <style>
+        :root {
+            --bg: #0b0b0d;
+            --panel: #16161a;
+            --accent: #10b981;
+            --text: #f4f4f5;
+        }
+        body {
+            margin: 0; padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex; height: 100vh; overflow: hidden;
+        }
+        #sidebar {
+            width: 300px; background-color: var(--panel);
+            padding: 25px; box-shadow: 4px 0 15px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; gap: 20px; z-index: 10;
+        }
+        #canvas-container {
+            flex-grow: 1; display: flex; justify-content: center; align-items: center;
+            background: radial-gradient(circle at center, #1e1e24 0%, #0b0b0d 100%);
+        }
+        canvas {
+            background-color: #050507; border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+        }
+        h1, h2 { margin: 0; font-weight: 700; }
+        h1 { color: var(--accent); font-size: 1.8rem; }
+        .stat { font-size: 1.1rem; color: #a1a1aa; }
+        .stat span { color: #fff; font-weight: bold; }
+        .pipeline-box {
+            font-size: 0.8rem; background: rgba(0,0,0,0.4);
+            padding: 12px; border-radius: 6px; border-left: 3px solid var(--accent);
+            line-height: 1.4; color: #cbd5e1;
+        }
+        .controls-hint {
+            font-size: 0.85rem; color: #71717a; background: #202024;
+            padding: 10px; border-radius: 6px; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <h1>Snake Xenzia</h1>
+        <p style="margin:0; color:#71717a; font-size:0.85rem;">Custom 3D Software Renderer</p>
+        
+        <hr style="border-color: #27272a; margin: 5px 0;">
+
+        <div class="stat">Score: <span id="score">0</span></div>
+        <div class="stat">Game Status: <span id="status" style="color: #3b82f6;">PLAYING</span></div>
+
+        <div class="controls-hint">
+            <strong>Controls:</strong><br>
+            Use <b>Arrow Keys</b> to steer the snake.<br>
+            (Grid relative steering)
+        </div>
+
+        <div class="pipeline-box">
+            <strong>Pipeline Monitor:</strong>
+            <ul style="margin: 6px 0 0 15px; padding: 0;">
+                <li><b>Application:</b> Snake mechanics, grid logic, directional input.</li>
+                <li><b>Geometry:</b> World matrix translations, Backface Culling, 3D to 2D Perspective Projection.</li>
+                <li><b>Rasterization:</b> Depth-sorted face filling & wireframe drawing.</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
